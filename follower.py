@@ -164,7 +164,7 @@ class Follower(object):
         gateway_rows = gateway_inventory.to_dict("index")
 
         entries_to_update, entries_to_put = [], []
-        # Find all customers that needs to be updated and build mappings
+        # Find all entries that need to be updated and build mappings
         for each in (
                 self.session.query(GatewayInventory.address).filter(GatewayInventory.address.in_(gateway_rows.keys())).all()
         ):
@@ -240,7 +240,11 @@ class Follower(object):
                 if not self.session.query(GatewayInventory.address).where(GatewayInventory.address == transaction.challenger).first():
                     continue
 
-                tx_coords = self.gateway_locations["coordinates"][transaction.path[0].challengee]
+                try:
+                    tx_coords = self.gateway_locations["coordinates"][transaction.path[0].challengee]
+                except KeyError:
+                    print(f"Skipping {transaction.path[0].challengee}")
+                    continue
                 tx_elev = self.gateway_locations["elevation"][transaction.path[0].challengee]
                 elevation_map, window = get_local_elevation_map(self.dataset,
                                                                 tx_coords[0],
