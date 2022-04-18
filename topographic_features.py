@@ -3,17 +3,6 @@ from rasterio.windows import Window
 from typing import Tuple, List
 
 
-def process_witness_paths(pt1, pt2, dataset: DatasetReader, elevation_map: np.array, window: Window):
-
-    d_vec, elev_vec = generate_profile_from_path(pt1, pt2, dataset, elevation_map, window)
-
-    # get topographic features
-    try:
-        features = extract_topographic_features(d_vec, elev_vec)
-    except (np.linalg.LinAlgError, SystemError):
-        # hotspots are too close to create elevation profile
-
-
 
 def get_local_elevation_map(dataset: DatasetReader, lat: float, lon: float, range_km: int) -> Tuple[np.array, Window]:
     """
