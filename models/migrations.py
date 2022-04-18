@@ -43,6 +43,14 @@ class ChallengeReceiptsParsed(Base):
     witness_datarate = Column(Text)
     witness_frequency = Column(Float)
     witness_timestamp = Column(BigInteger)
+    ra = Column(Float)
+    rq = Column(Float)
+    rv = Column(Float)
+    rz = Column(Float)
+    rsk = Column(Float)
+    rku = Column(Float)
+    deepest_barrier = Column(Float)
+    n_barriers = Column(Integer)
     distance_km = Column(Float, index=True)
 
 

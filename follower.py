@@ -12,9 +12,11 @@ from client import BlockchainNodeClient
 from loaders import *
 from settings import Settings
 from constants import *
+from topographic_features import *
 
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
+import rasterio
 
 from geoalchemy2 import func
 import h3
@@ -43,6 +45,7 @@ class Follower(object):
         self.denylist_tag: Optional[int] = None
 
         self.gateway_locations: Optional[pd.DataFrame] = None
+        self.dataset = rasterio.open(os.getenv("VRT_PATH"))
 
     def run(self):
         if self.settings.gateway_inventory_bootstrap:
@@ -58,7 +61,7 @@ class Follower(object):
         except sqlalchemy.exc.NoResultFound:
             pass
 
-        self.gateway_locations = pd.read_sql("SELECT address, location FROM gateway_inventory;", con=self.engine, index_col="address")
+        self.gateway_locations = pd.read_sql("SELECT address, location, elevation FROM gateway_inventory;", con=self.engine, index_col="address")
         self.gateway_locations["coordinates"] = self.gateway_locations["location"].map(h3.h3_to_geo)
 
         self.get_first_block()
@@ -157,13 +160,7 @@ class Follower(object):
         print("Updating gateway_inventory...")
         gateway_inventory, inventory_height = process_gateway_inventory(self.settings)
         gateway_inventory["address"] = gateway_inventory.index
-        # replace instead of delete + append
-        # try:
-        #     self.session.query(GatewayInventory).delete()
-        #     self.session.commit()
-        # except sqlalchemy.exc.IntegrityError:
-        #     self.session.rollback()
-        # gateway_inventory.to_sql("gateway_inventory", con=self.engine, if_exists="replace")
+
         gateway_rows = gateway_inventory.to_dict("index")
 
         entries_to_update, entries_to_put = [], []
@@ -242,9 +239,25 @@ class Follower(object):
                     continue
                 if not self.session.query(GatewayInventory.address).where(GatewayInventory.address == transaction.challenger).first():
                     continue
+
+                tx_coords = self.gateway_locations["coordinates"][transaction.path[0].challengee]
+                tx_elev = self.gateway_locations["elevation"][transaction.path[0].challengee]
+                elevation_map, window = get_local_elevation_map(self.dataset,
+                                                                tx_coords[0],
+                                                                tx_coords[1],
+                                                                range_km=250)
+                elevation_map[elevation_map == self.dataset.nodata] = 0
+
                 for witness in transaction.path[0].witnesses:
                     if not self.session.query(GatewayInventory.address).where(GatewayInventory.address == witness.gateway).first():
                         continue
+
+                    rx_coords = self.gateway_locations["coordinates"][witness.gateway]
+                    rx_elev = self.gateway_locations["elevation"][witness.gateway]
+
+                    distance_km = self.get_distance_between_gateways(tx_coords, rx_coords)
+                    topo_features = get_features_for_receipt(tx_coords, rx_coords, self.dataset, elevation_map, window, rx_elev, tx_elev, distance_km)
+
                     parsed_receipt = ChallengeReceiptsParsed(
                         block=block.height,
                         hash=txn.hash,
@@ -260,7 +273,16 @@ class Follower(object):
                         witness_datarate=witness.datarate,
                         witness_frequency=witness.frequency,
                         witness_timestamp=witness.timestamp,
-                        distance_km=self.get_distance_between_gateways(transaction.path[0].challengee, witness.gateway)
+                        ra=topo_features["ra"],
+                        rq=topo_features["rq"],
+                        rp=topo_features["rp"],
+                        rv=topo_features["rv"],
+                        rz=topo_features["rz"],
+                        rsk=topo_features["rsk"],
+                        rku=topo_features["rku"],
+                        deepest_barrier=topo_features["deepest_barrier"],
+                        n_barriers=topo_features["n_barriers"],
+                        distance_km=distance_km
                     )
 
                     if transaction.path[0].receipt:
@@ -292,10 +314,10 @@ class Follower(object):
         self.session.query(PaymentsParsed).filter(PaymentsParsed.block < (self.sync_height - self.settings.block_inventory_size)).delete()
         self.session.commit()
 
-    def get_distance_between_gateways(self, tx_address, rx_address):
+    def get_distance_between_gateways(self, tx_coords, rx_coords):
         try:
-            return haversine(self.gateway_locations["coordinates"][tx_address],
-                             self.gateway_locations["coordinates"][rx_address],
+            return haversine(tx_coords,
+                             rx_coords,
                              unit=Unit.KILOMETERS)
         except KeyError:
             return None
