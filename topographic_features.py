@@ -58,12 +58,11 @@ def extract_topographic_features(d_vec: np.array, elev_vec: np.array):
 
 def get_features_for_receipt(pt1, pt2, dataset, elevation_map, window, elev1, elev2, distance_km):
 
-    d_vec, elev_vec = generate_profile_from_path(pt1, pt2, dataset, elevation_map, window, elev1, elev2, distance_km)
-
     # get topographic features
     try:
+        d_vec, elev_vec = generate_profile_from_path(pt1, pt2, dataset, elevation_map, window, elev1, elev2, distance_km)
         features = extract_topographic_features(d_vec, elev_vec)
-    except (np.linalg.LinAlgError, SystemError):
+    except (np.linalg.LinAlgError, SystemError, IndexError):
     # hotspots are too close to create elevation profile
         features = {
             "ra": None,
