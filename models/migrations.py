@@ -45,6 +45,7 @@ class ChallengeReceiptsParsed(Base):
     witness_timestamp = Column(BigInteger)
     ra = Column(Float)
     rq = Column(Float)
+    rp = Column(Float)
     rv = Column(Float)
     rz = Column(Float)
     rsk = Column(Float)
